@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教师端 - 专注度监测大屏</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            background: #141414;
+            color: #e2e8f0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-export {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .btn-export:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-export:active {
+            transform: translateY(0);
+        }
+
+        .dashboard {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* 左侧：图表容器 */
+        .chart-panel {
+            flex: 0 0 70%;
+            background: linear-gradient(135deg, #1a1a1a, #0f0f0f);
+            border: 2px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .chart-panel h2 {
+            margin: 0 0 8px;
+            font-size: 20px;
+            color: #93c5fd;
+            font-weight: 600;
+        }
+
+        .chart-panel .subtitle {
+            margin: 0 0 16px;
+            color: #94a3b8;
+            font-size: 13px;
+        }
+
+        .chart-container {
+            flex: 1;
+            position: relative;
+            min-height: 420px;
+            height: 420px;
+            width: 100%;
+        }
+
+        #focusChart {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* 右侧：预警容器 */
+        .warning-panel {
+            flex: 0 0 30%;
+            background: linear-gradient(135deg, #1a1a1a, #0f0f0f);
+            border: 2px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .warning-panel h2 {
+            margin: 0 0 8px;
+            font-size: 20px;
+            color: #93c5fd;
+            font-weight: 600;
+        }
+
+        .warning-panel .subtitle {
+            margin: 0 0 16px;
+            color: #94a3b8;
+            font-size: 13px;
+        }
+
+        #warning-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        #warning-list li {
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            border-left: 4px solid #ef4444;
+            font-size: 13px;
+            line-height: 1.6;
+            animation: slideIn 0.3s ease;
+        }
+
+        #warning-list li.ok {
+            border-left-color: #34d399;
+            color: #86efac;
+            text-align: center;
+            background: #0f2818;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .student-name {
+            color: #fca5a5;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .student-score {
+            color: #f97316;
+            font-size: 12px;
+        }
+
+        .student-emotion {
+            color: #94a3b8;
+            font-size: 12px;
+        }
+
+        /* 底部状态栏 */
+        .status-bar {
+            background: #1a1a1a;
+            border: 2px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 12px;
+            color: #cbd5e1;
+            font-family: "Courier New", monospace;
+            letter-spacing: 0.5px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #34d399;
+            margin-right: 8px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* 连接状态指示灯 */
+        .connection-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(30, 58, 138, 0.2);
+            border: 2px solid #1e3a8a;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #34d399;
+            animation: pulse-status 2s ease-in-out infinite;
+        }
+
+        .status-dot.connected {
+            background: #34d399;
+            box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+        }
+
+        .status-dot.connecting {
+            background: #f59e0b;
+            animation: pulse-status-warning 1s ease-in-out infinite;
+        }
+
+        .status-dot.disconnected {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse-status {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        @keyframes pulse-status-warning {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .status-label {
+            color: #cbd5e1;
+            min-width: 40px;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* 响应式 */
+        @media (max-width: 1400px) {
+            .dashboard {
+                flex-direction: column;
+            }
+
+            .chart-panel {
+                flex: 0 0 auto;
+                height: 450px;
+            }
+
+            .warning-panel {
+                flex: 0 0 auto;
+                min-height: 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .btn-export {
+                width: 100%;
+                text-align: center;
+            }
+
+            .chart-panel,
+            .warning-panel {
+                height: auto;
+            }
+        }
+
+        /* 滚动条美化 */
+        #warning-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #warning-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #warning-list::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+
+        #warning-list::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        .chart-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chart-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chart-container::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <h1>体育课学生专注度监测大屏</h1>
+            <div id="connection-status" class="connection-indicator" title="连接状态指示灯">
+                <span class="status-dot" id="status-dot"></span>
+                <span class="status-label" id="status-label">就绪</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn-export" id="btn-refresh-connection" title="手动刷新连接">🔄 重新连接</button>
+            <button class="btn-export" id="btn-export-csv">📥 导出本节课数据</button>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <!-- 左侧：情感分布（70%） -->
+        <section class="chart-panel">
+            <h2>班级七维情感平均占比</h2>
+            <p class="subtitle">实时聚合班级全部学生的情感分布（七个维度平均比例）</p>
+            <div class="chart-container">
+                <canvas id="focusChart"></canvas>
+            </div>
+        </section>
+
+        <!-- 右侧：预警列表（30%） -->
+        <aside class="warning-panel">
+            <h2>异常预警</h2>
+            <p class="subtitle">综合不良情绪占比过高等</p>
+            <ul id="warning-list">
+                <li class="ok">✓ 暂无异常学生</li>
+            </ul>
+        </aside>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <div class="status-bar">
+        <span class="status-indicator"></span>
+        <span id="status-text">⏳ 系统初始化中...</span>
+    </div>
+
+    <script>
+        // ============================================================
+        // 全局配置与连接管理
+        // ============================================================
+
+        const MAX_DATA_POINTS = 60;
+        let chart = null;
+        let allDocuments = [];
+        const studentStatusMap = new Map();
+
+        const chartContainer = document.getElementById('focusChart');
+        const warningList = document.getElementById('warning-list');
+        const statusText = document.getElementById('status-text');
+        const btnExport = document.getElementById('btn-export-csv');
+        const btnRefreshConnection = document.getElementById('btn-refresh-connection');
+        const statusDot = document.getElementById('status-dot');
+        const statusLabel = document.getElementById('status-label');
+
+        // 连接管理状态
+        let connectionState = 'idle'; // idle, connecting, connected, error
+        let isAuthenticated = false;
+        let unwatchCallback = null;
+        let reconnectCount = 0;
+        const MAX_RECONNECT_ATTEMPTS = 3;
+        let reconnectTimer = null;
+        let app = null;
+        let db = null;
+
+        // ============================================================
+        // 连接状态管理函数
+        // ============================================================
+
+        function updateConnectionStatus(state, message) {
+            connectionState = state;
+
+            statusDot.className = 'status-dot';
+
+            switch(state) {
+                case 'connected':
+                    statusDot.classList.add('connected');
+                    statusLabel.textContent = '在线';
+                    statusLabel.style.color = '#34d399';
+                    break;
+                case 'connecting':
+                    statusDot.classList.add('connecting');
+                    statusLabel.textContent = '连接中...';
+                    statusLabel.style.color = '#f59e0b';
+                    break;
+                case 'disconnected':
+                    statusDot.classList.add('disconnected');
+                    statusLabel.textContent = '离线';
+                    statusLabel.style.color = '#ef4444';
+                    break;
+                default:
+                    statusLabel.textContent = '就绪';
+                    statusLabel.style.color = '#cbd5e1';
+            }
+
+            console.log(`[连接状态] ${state}: ${message}`);
+        }
+
+        function stopReconnectTimer() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+        }
+
+        function scheduleReconnect() {
+            if (reconnectCount >= MAX_RECONNECT_ATTEMPTS) {
+                updateConnectionStatus('disconnected', `已达最大重连次数 (${MAX_RECONNECT_ATTEMPTS})`);
+                statusText.textContent = `❌ 连接失败：已尝试 ${MAX_RECONNECT_ATTEMPTS} 次重连仍未成功。
+请检查：
+1. 浏览器控制台 (F12) 查看错误信息
+2. 云开发环境变量是否正确
+3. 是否开启了匿名登录
+4. 网络连接是否正常
+点击"重新连接"按钮后查看控制台输出`;
+                return;
+            }
+            
+            stopReconnectTimer();
+            reconnectCount++;
+            const delayMs = 3000 + Math.random() * 2000; // 3-5秒延迟
+            
+            updateConnectionStatus('connecting', `正在重新连接... (${reconnectCount}/${MAX_RECONNECT_ATTEMPTS})`);
+            statusText.textContent = `🔄 准备重新连接 (${reconnectCount}/${MAX_RECONNECT_ATTEMPTS})...`;
+            
+            reconnectTimer = setTimeout(() => {
+                startWatching();
+            }, delayMs);
+        }
+
+        // ============================================================
+        // Chart.js 配置 - 七维情感柱状图
+        // ============================================================
+
+        const emotions = ["生气", "厌恶", "恐惧", "开心", "难过", "惊讶", "中性"];
+        const emotionColors = ['#ff7a45', '#ff9c6e', '#ffc069', '#52c41a', '#faad14', '#1890ff', '#d9d9d9'];
+
+        const chartConfig = {
+            type: 'bar',
+            data: {
+                labels: emotions,
+                datasets: [{
+                    label: '平均占比 (%)',
+                    data: [0, 0, 0, 0, 0, 0, 0],
+                    backgroundColor: emotionColors,
+                    borderColor: emotionColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                animation: { duration: 300 },
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        min: 0,
+                        max: 100,
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 20,
+                            color: '#cbd5e1',
+                            font: {
+                                size: 12,
+                                weight: '500'
+                            },
+                            padding: 10
+                        },
+                        grid: {
+                            color: 'rgba(148, 163, 184, 0.1)',
+                            drawBorder: true,
+                            borderColor: '#334155'
+                        }
+                    },
+                    x: {
+                        type: 'category',
+                        display: true,
+                        ticks: {
+                            color: '#cbd5e1',
+                            font: {
+                                size: 12,
+                                weight: '600'
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(148, 163, 184, 0.05)',
+                            drawBorder: true,
+                            borderColor: '#334155'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: '#e2e8f0',
+                            font: { size: 13 },
+                            padding: 12
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#cbd5e1',
+                        borderColor: '#475569',
+                        borderWidth: 1,
+                        padding: 12,
+                        callbacks: {
+                            label(context) {
+                                return `占比: ${context.parsed.y.toFixed(1)}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // ============================================================
+        // 工具函数
+        // ============================================================
+
+        function toDate(rawTs) {
+            if (!rawTs) return new Date();
+            if (rawTs instanceof Date) return rawTs;
+            if (typeof rawTs === 'number' || typeof rawTs === 'string') return new Date(rawTs);
+            if (rawTs.seconds !== undefined) return new Date(rawTs.seconds * 1000);
+            if (typeof rawTs.toDate === 'function') return rawTs.toDate();
+            return new Date(rawTs);
+        }
+
+        function pad(num) {
+            return String(num).padStart(2, '0');
+        }
+
+        function formatTime(dateObj) {
+            const d = dateObj instanceof Date ? dateObj : new Date(dateObj);
+            const validDate = Number.isNaN(d.getTime()) ? new Date() : d;
+            return `${pad(validDate.getHours())}:${pad(validDate.getMinutes())}:${pad(validDate.getSeconds())}`;
+        }
+
+        // ============================================================
+        // 更新七维情感占比图表
+        // ============================================================
+
+        function updateChart(docs) {
+            if (!docs || docs.length === 0) {
+                if (!chart) {
+                    chart = new Chart(chartContainer, chartConfig);
+                }
+                return;
+            }
+
+            // === 计算七维情感的平均占比 ===
+            const emotionAverages = [0, 0, 0, 0, 0, 0, 0];
+            let validCount = 0;
+
+            docs.forEach((doc) => {
+                if (!doc.emotionDistribution || !Array.isArray(doc.emotionDistribution)) {
+                    return;
+                }
+
+                const probs = doc.emotionDistribution;
+                if (probs.length !== 7) {
+                    return;
+                }
+
+                for (let i = 0; i < 7; i++) {
+                    const val = Number(probs[i]) || 0;
+                    if (!Number.isNaN(val)) {
+                        emotionAverages[i] += val;
+                    }
+                }
+                validCount++;
+            });
+
+            // === 计算平均值 ===
+            if (validCount > 0) {
+                for (let i = 0; i < 7; i++) {
+                    emotionAverages[i] = parseFloat((emotionAverages[i] / validCount).toFixed(1));
+                }
+            }
+
+            // === 初始化图表（如果还未创建）===
+            if (!chart) {
+                chart = new Chart(chartContainer, chartConfig);
+            }
+
+            // === 更新数据 ===
+            chart.data.datasets[0].data = emotionAverages;
+            chart.update('none');
+        }
+
+        // ============================================================
+        // 更新预警列表 - 基于不好情绪占比高的学生
+        // ============================================================
+
+        function updateWarnings(docs) {
+            // 收集每个学生的所有情感数据
+            const studentEmotionData = new Map();
+
+            docs.forEach(doc => {
+                const studentId = (doc.studentId || '未命名学生').trim();
+                if (!studentEmotionData.has(studentId)) {
+                    studentEmotionData.set(studentId, {
+                        emotions: [],
+                        latestEmotion: doc.emotion || '未知',
+                        timestamp: doc.timestamp ? new Date(doc.timestamp) : new Date()
+                    });
+                }
+
+                const data = studentEmotionData.get(studentId);
+                if (doc.emotionDistribution && Array.isArray(doc.emotionDistribution)) {
+                    data.emotions.push(doc.emotionDistribution);
+                }
+
+                const newDate = doc.timestamp ? new Date(doc.timestamp) : new Date();
+                if (newDate > data.timestamp) {
+                    data.latestEmotion = doc.emotion || '未知';
+                    data.timestamp = newDate;
+                }
+            });
+
+            // 计算每个学生的不好情绪占比并生成预警列表
+            // 不好情绪: 0=生气, 1=厌恶, 2=恐惧, 4=难过
+            const warnings = [];
+
+            studentEmotionData.forEach((data, studentId) => {
+                if (data.emotions.length === 0) return;
+
+                // 计算所有记录中不好情绪的平均占比
+                let totalBadEmotionRatio = 0;
+                data.emotions.forEach(probs => {
+                    if (probs.length >= 7) {
+                        const badRatio = (Number(probs[0]) || 0) + (Number(probs[1]) || 0) +
+                                        (Number(probs[2]) || 0) + (Number(probs[4]) || 0);
+                        totalBadEmotionRatio += badRatio;
+                    }
+                });
+
+                const avgBadRatio = totalBadEmotionRatio / data.emotions.length;
+
+                // 不好情绪占比 > 40% 则列为异常
+                if (avgBadRatio > 40) {
+                    warnings.push({
+                        studentId,
+                        badRatio: parseFloat(avgBadRatio.toFixed(1)),
+                        emotion: data.latestEmotion,
+                        timestamp: data.timestamp.getTime()
+                    });
+                }
+            });
+
+            // 按不好情绪占比降序排列
+            warnings.sort((a, b) => b.badRatio - a.badRatio);
+
+            warningList.innerHTML = '';
+
+            if (warnings.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'ok';
+                li.textContent = '✓ 暂无异常学生';
+                warningList.appendChild(li);
+                return;
+            }
+
+            warnings.forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span class="student-name">${item.studentId}</span>
+                    <div class="student-score">⚠️ 不好情绪占比: ${item.badRatio}%</div>
+                    <div class="student-emotion">😐 最新状态: ${item.emotion}</div>
+                `;
+                warningList.appendChild(li);
+            });
+        }
+
+        // ============================================================
+        // 导出CSV功能
+        // ============================================================
+
+        btnExport.addEventListener('click', async () => {
+            try {
+                statusText.textContent = '⏳ 正在导出数据...';
+                btnExport.disabled = true;
+
+                if (!db) {
+                    throw new Error('数据库未初始化');
+                }
+
+                // 获取学生专注度数据（限制1000条）
+                const result = await db.collection('student_focus')
+                    .orderBy('timestamp', 'asc')
+                    .limit(1000)
+                    .get();
+
+                const docs = result.data || [];
+
+                if (docs.length === 0) {
+                    alert('暂无数据可导出');
+                    statusText.textContent = '✅ 系统就绪';
+                    btnExport.disabled = false;
+                    return;
+                }
+
+                // 转换为CSV格式
+                const csv = convertToCSV(docs);
+
+                // 下载CSV文件
+                downloadCSV(csv, 'focus_data.csv');
+
+                statusText.textContent = `✅ 成功导出 ${docs.length} 条数据`;
+                btnExport.disabled = false;
+
+            } catch (err) {
+                statusText.textContent = `❌ 导出失败: ${err.message}`;
+                btnExport.disabled = false;
+                console.error('导出失败:', err);
+            }
+        });
+
+        function convertToCSV(docs) {
+            const emotions = ["生气", "厌恶", "恐惧", "开心", "难过", "惊讶", "中性"];
+            // CSV列标题：按照视频分析端的格式
+            const headers = ['时间', '学生姓名', '主导情绪', ...emotions.map((emotion, i) => `${emotion}(%)`)];
+            const rows = [headers.join(',')];
+
+            // 转换每条记录
+            docs.forEach(doc => {
+                const timestamp = formatTime(doc.timestamp);
+                const studentId = (doc.studentId || '未命名').replace(/,/g, '');
+
+                // 从emotionDistribution数组中获取主导情绪
+                const emotionDistribution = doc.emotionDistribution || [0, 0, 0, 0, 0, 0, 0];
+                let maxIdx = 0;
+                let maxVal = emotionDistribution[0];
+                for (let i = 1; i < emotionDistribution.length; i++) {
+                    if (emotionDistribution[i] > maxVal) {
+                        maxVal = emotionDistribution[i];
+                        maxIdx = i;
+                    }
+                }
+                const mainEmotion = emotions[maxIdx];
+
+                // 构建行数据：时间 + 学生姓名 + 主导情绪 + 7维百分比
+                const row = [
+                    `"${timestamp}"`,
+                    `"${studentId}"`,
+                    `"${mainEmotion}"`,
+                    ...emotionDistribution.map(p => p.toFixed(1))
+                ];
+                rows.push(row.join(','));
+            });
+
+            return rows.join('\n');
+        }
+
+        function downloadCSV(csvContent, filename) {
+            // 创建Blob对象
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+            // 创建下载链接
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // 释放URL
+            URL.revokeObjectURL(url);
+        }
+
+        // ============================================================
+        // 系统初始化与监听 - 修复无限重连死循环
+        // ============================================================
+
+        async function startWatching() {
+            try {
+                updateConnectionStatus('connecting', '正在建立实时连接...');
+
+                // === 任务 1：精准捕获登录错误 ===
+                if (!isAuthenticated) {
+                    const auth = app.auth();
+                    
+                    if (!auth.hasLoginState()) {
+                        try {
+                            await auth.signInAnonymously();
+                            isAuthenticated = true;
+                            console.log('[系统] 认证成功');
+                        } catch (authError) {
+                            console.error('[认证] 匿名登录失败:', authError.message);
+                            
+                            statusText.textContent = `❌ 登录失败: ${authError.message}。\n请检查控制台 (F12) 查看详细错误信息`;
+                            updateConnectionStatus('disconnected', `登录失败: ${authError.message}`);
+                            
+                            // 登录失败，不执行后续的 watch，而是等待下一次重连
+                            scheduleReconnect();
+                            return;
+                        }
+                    } else {
+                        isAuthenticated = true;
+                    }
+                }
+
+                // === 取消旧的监听（如果存在）===
+                if (unwatchCallback) {
+                    try {
+                        unwatchCallback();
+                    } catch (e) {
+                        // 忽略取消监听的错误
+                    }
+                    unwatchCallback = null;
+                }
+
+                // === 开始实时监听 - 先尝试实时模式，失败则降级到轮询模式 ===
+                let isWatchActive = false;
+                let pollInterval = null;
+
+                // 轮询函数（降级方案）
+                const startPolling = () => {
+                    statusText.textContent = `⚠️ 已降级为轮询模式 | ${new Date().toLocaleTimeString()}`;
+                    
+                    if (pollInterval) clearInterval(pollInterval);
+                    
+                    const pollData = async () => {
+                        try {
+                            const result = await db.collection('student_focus')
+                                .orderBy('timestamp', 'desc')
+                                .limit(100)
+                                .get();
+
+                            const docs = result.data || [];
+                            if (docs.length > 0) {
+                                allDocuments = docs;
+                                updateChart(docs);
+                                updateWarnings(docs);
+
+                                // 查询数据库真实记录总数
+                                let totalRecords = docs.length;
+                                try {
+                                    const countRes = await db.collection('student_focus').count();
+                                    if (countRes && typeof countRes.total === 'number') {
+                                        totalRecords = countRes.total;
+                                    }
+                                } catch (countErr) {
+                                    console.warn('[轮询] 获取记录总数失败:', countErr.message);
+                                }
+
+                                // 全量查询所有学生ID以获取准确学生人数
+                                let studentCount = new Set(docs.map(d => d.studentId)).size;
+                                try {
+                                    const allStudentIds = new Set();
+                                    const PAGE_SIZE = 100;
+                                    const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+                                    for (let p = 0; p < totalPages; p++) {
+                                        const pageRes = await db.collection('student_focus')
+                                            .orderBy('timestamp', 'desc')
+                                            .skip(p * PAGE_SIZE)
+                                            .limit(PAGE_SIZE)
+                                            .field({ studentId: true })
+                                            .get();
+                                        (pageRes.data || []).forEach(d => {
+                                            if (d.studentId) allStudentIds.add(d.studentId);
+                                        });
+                                    }
+                                    if (allStudentIds.size > 0) studentCount = allStudentIds.size;
+                                } catch (stuErr) {
+                                    console.warn('[轮询] 获取学生列表失败:', stuErr.message);
+                                }
+
+                                statusText.textContent =
+                                    `⚠️ ${new Date().toLocaleTimeString()} | ` +
+                                    `[轮询] 记录: ${totalRecords} | ` +
+                                    `学生: ${studentCount}`;
+                            }
+                        } catch (pollErr) {
+                            console.error('[轮询] 获取数据失败:', pollErr.message);
+                            statusText.textContent = `❌ 轮询异常: ${pollErr.message}`;
+                        }
+                    };
+                    
+                    // 立即执行一次
+                    pollData();
+                    
+                    // 然后每3秒轮询一次
+                    pollInterval = setInterval(pollData, 3000);
+                };
+
+                // 尝试实时监听
+                try {
+                    unwatchCallback = db.collection('student_focus')
+                        .orderBy('timestamp', 'desc')
+                        .limit(100)
+                        .watch({
+                            async onChange(snapshot) {
+                                // 连接成功，重置重连计数
+                                if (connectionState !== 'connected') {
+                                    reconnectCount = 0;
+                                    isWatchActive = true;
+                                    updateConnectionStatus('connected', '实时连接已建立');
+
+                                    // 如果在轮询模式，停止轮询
+                                    if (pollInterval) {
+                                        clearInterval(pollInterval);
+                                        pollInterval = null;
+                                    }
+                                }
+
+                                const docs = snapshot.docs || [];
+
+                                if (docs.length === 0) {
+                                    statusText.textContent = `⏳ 等待学生数据... | ${new Date().toLocaleTimeString()}`;
+                                    return;
+                                }
+
+                                allDocuments = docs;
+                                updateChart(docs);
+                                updateWarnings(docs);
+
+                                // 查询数据库真实记录总数
+                                let totalRecords = docs.length;
+                                try {
+                                    const countRes = await db.collection('student_focus').count();
+                                    if (countRes && typeof countRes.total === 'number') {
+                                        totalRecords = countRes.total;
+                                    }
+                                } catch (countErr) {
+                                    console.warn('[监听] 获取记录总数失败:', countErr.message);
+                                }
+
+                                // 全量查询所有学生ID以获取准确学生人数
+                                let studentCount = new Set(docs.map(d => d.studentId)).size;
+                                try {
+                                    const allStudentIds = new Set();
+                                    const PAGE_SIZE = 100;
+                                    const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+                                    for (let p = 0; p < totalPages; p++) {
+                                        const pageRes = await db.collection('student_focus')
+                                            .orderBy('timestamp', 'desc')
+                                            .skip(p * PAGE_SIZE)
+                                            .limit(PAGE_SIZE)
+                                            .field({ studentId: true })
+                                            .get();
+                                        (pageRes.data || []).forEach(d => {
+                                            if (d.studentId) allStudentIds.add(d.studentId);
+                                        });
+                                    }
+                                    if (allStudentIds.size > 0) studentCount = allStudentIds.size;
+                                } catch (stuErr) {
+                                    console.warn('[监听] 获取学生列表失败:', stuErr.message);
+                                }
+
+                                statusText.textContent =
+                                    `✅ ${new Date().toLocaleTimeString()} | ` +
+                                    `记录: ${totalRecords} | ` +
+                                    `学生: ${studentCount}`;
+                            },
+
+                            onError(err) {
+                                // === WebSocket 超时 - 降级到轮询 ===
+                                console.error('[监听异常] 错误信息:', err.message);
+                                
+                                if (err.message && err.message.includes('timedout')) {
+                                    startPolling();
+                                    updateConnectionStatus('connected', '已降级到轮询模式');
+                                } else {
+                                    statusText.textContent = `❌ 监听异常: ${err.message}`;
+                                    updateConnectionStatus('disconnected', err.message);
+                                    scheduleReconnect();
+                                }
+                            }
+                        });
+
+                    console.log('[系统] 实时监听已启动\n');
+                } catch (watchErr) {
+                    console.error('[系统] 实时监听失败，降级为轮询:', watchErr.message);
+                    startPolling();
+                }
+                
+            } catch (error) {
+                // === 捕获其他错误 ===
+                console.error('[系统] 启动失败:', error.message);
+                
+                updateConnectionStatus('disconnected', error.message);
+                statusText.textContent = `❌ 启动监听失败: ${error.message}`;
+                scheduleReconnect();
+            }
+        }
+
+        async function initSystem() {
+            try {
+                updateConnectionStatus('connecting', '正在初始化系统...');
+                statusText.textContent = '🔄 正在连接云数据库...';
+
+                // === 检查 CloudBase SDK ===
+                if (!window.cloudbase) {
+                    throw new Error('CloudBase SDK未加载');
+                }
+
+                // === 初始化 CloudBase 应用（仅一次）===
+                if (!app) {
+                    app = window.cloudbase.init({
+                        env: 'xiudongspace-1go2y2fxe6bb2292'
+                    });
+                    db = app.database();
+                    console.log('[系统] CloudBase 已连接');
+                }
+
+                // === 初始化身份验证状态（在 startWatching 中会再次检查）===
+                // 这里不执行登录，留给 startWatching 去处理
+
+                // === 启动监听 ===
+                await startWatching();
+                reconnectCount = 0;
+                
+            } catch (error) {
+                console.error('[系统] 初始化失败:', error.message);
+                console.error('  errCode:', error.code || '未知');
+                console.error('  errMsg:', error.message || '未知错误');
+                console.error('  details:', error);
+                
+                updateConnectionStatus('disconnected', error.message);
+                statusText.textContent = `❌ 系统初始化失败: ${error.message}`;
+            }
+        }
+
+        btnRefreshConnection.addEventListener('click', async () => {
+            updateConnectionStatus('connecting', '用户手动刷新...');
+            stopReconnectTimer();
+            reconnectCount = 0;
+            statusText.textContent = '🔄 正在重新连接...';
+            await startWatching();
+        });
+
+        window.addEventListener('load', initSystem);
+    </script>
+
+</body>
+</html>

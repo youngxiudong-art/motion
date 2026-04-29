@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教师管理端 - 学生情绪监测系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .header h1 { color: #1677ff; font-size: 24px; margin: 0; }
+        .header-controls { display: flex; gap: 15px; align-items: center; }
+        input, select, button {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        button {
+            background: #1677ff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover { background: #0d47a1; }
+        .container {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .sidebar {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            height: fit-content;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .sidebar h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 14px;
+        }
+        .student-list {
+            list-style: none;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .student-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+        .student-item:hover {
+            background: #e8e8e8;
+        }
+        .student-item.active {
+            background: #1677ff;
+            color: white;
+        }
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 12px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1677ff;
+        }
+        .students-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .student-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        .student-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .student-card .name {
+            font-weight: bold;
+            font-size: 15px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        .student-card .emotion {
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .emotion-bars {
+            display: flex;
+            gap: 3px;
+            font-size: 11px;
+            margin-bottom: 8px;
+        }
+        .emotion-bar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .bar-bg {
+            background: #e8e8e8;
+            height: 30px;
+            width: 100%;
+            border-radius: 2px;
+            position: relative;
+            overflow: hidden;
+        }
+        .bar-fill {
+            background: linear-gradient(180deg, #52c41a, #faad14);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .bar-label {
+            margin-top: 3px;
+            color: #666;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #999;
+            text-align: right;
+            margin-top: 8px;
+        }
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .chart-container h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+        .controls-panel {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .controls-panel h3 {
+            margin-bottom: 12px;
+        }
+        .controls-panel button {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .online-badge {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #52c41a;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .offline-badge {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #ccc;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .stats-summary {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .stats-summary h3 {
+            margin-bottom: 12px;
+        }
+        .export-btn {
+            background: #52c41a !important;
+        }
+        .export-btn:hover {
+            background: #389e0d !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>👨‍🏫 教师管理端 - 学生情绪实时监测</h1>
+        <div class="header-controls">
+            <input type="text" id="classroom-name" placeholder="课堂名称" value="语文课堂" />
+            <button onclick="createNewClassroom()">新建课堂</button>
+            <button class="export-btn" onclick="exportReport()">📥 导出报告</button>
+        </div>
+    </div>
+
+    <div class="controls-panel">
+        <h3>课程控制</h3>
+        <button onclick="startLesson()">▶ 开始课程</button>
+        <button onclick="pauseLesson()">⏸ 暂停</button>
+        <button onclick="markStage('讲解')">📌 标记-讲解</button>
+        <button onclick="markStage('讨论')">💬 标记-讨论</button>
+        <button onclick="markStage('实验')">🔬 标记-实验</button>
+        <button onclick="markStage('总结')">📝 标记-总结</button>
+        <button onclick="endLesson()" style="background: #ff4d4f;">⏹ 结束课程</button>
+        <div style="margin-top: 10px; font-size: 13px; color: #666;">
+            在线学生：<span id="online-count">0</span> | 课程时长：<span id="duration">00:00</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <h3>📋 在线学生列表</h3>
+            <ul class="student-list" id="student-list">
+                <li class="student-item" style="color: #999; background: #f5f5f5;">暂无学生在线</li>
+            </ul>
+        </div>
+
+        <div class="main-content">
+            <div class="stats-summary">
+                <h3>📊 全班情绪统计</h3>
+                <div class="stats-row" id="class-stats">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <div style="position: relative;">
+                <h3 style="margin-bottom: 15px;">👥 学生实时情绪卡片</h3>
+                <div class="students-grid" id="students-container">
+                    <div style="grid-column: 1/-1; text-align: center; color: #999; padding: 40px;">
+                        等待学生进入课堂...
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-row">
+                <div class="chart-container">
+                    <h3>📈 全班情绪趋势（时间线）</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="timeline-chart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <h3>🥧 情绪分布饼图</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="pie-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const emotions = ["生气", "厌恶", "恐惧", "开心", "难过", "惊讶", "中性"];
+        const emotionEmojis = ["😠", "🤢", "😨", "😊", "😢", "😲", "😐"];
+
+        let studentData = {}; // 存储学生数据
+        let lessonStartTime = null;
+        let lessonActive = false;
+        let timelineChart = null;
+        let pieChart = null;
+        let stages = []; // 课程阶段标记
+
+        // CloudBase 相关变量
+        let app = null;
+        let db = null;
+        let unwatchCallback = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            initCloudBase();
+        });
+
+        // 初始化 CloudBase
+        async function initCloudBase() {
+            try {
+                if (!window.cloudbase) {
+                    console.error('CloudBase SDK未加载');
+                    loadSampleData();
+                    startDataRefresh();
+                    return;
+                }
+
+                app = window.cloudbase.init({
+                    env: 'xiudongspace-1go2y2fxe6bb2292'
+                });
+                db = app.database();
+
+                // 匿名登录
+                const auth = app.auth();
+                if (!auth.hasLoginState()) {
+                    await auth.signInAnonymously();
+                }
+
+                // 启动实时监听
+                startCloudBaseWatch();
+                startDataRefresh();
+            } catch (error) {
+                console.error('CloudBase 初始化失败:', error);
+                loadSampleData();
+                startDataRefresh();
+            }
+        }
+
+        // 从 CloudBase 实时监听数据
+        function startCloudBaseWatch() {
+            try {
+                if (unwatchCallback) {
+                    unwatchCallback();
+                }
+
+                unwatchCallback = db.collection('student_focus')
+                    .orderBy('timestamp', 'desc')
+                    .limit(100)
+                    .watch({
+                        onChange(snapshot) {
+                            const docs = snapshot.docs || [];
+
+                            // 将 CloudBase 数据转换为本地格式
+                            studentData = {};
+                            docs.forEach(doc => {
+                                const studentId = doc.studentId || '未命名学生';
+
+                                if (!studentData[studentId]) {
+                                    studentData[studentId] = {
+                                        name: studentId,
+                                        emotionDistribution: doc.emotionDistribution || [0, 0, 0, 0, 0, 0, 0],
+                                        lastUpdate: doc.timestamp ? new Date(doc.timestamp) : new Date(),
+                                        online: true
+                                    };
+                                } else {
+                                    // 更新为最新数据
+                                    const currentTime = doc.timestamp ? new Date(doc.timestamp) : new Date();
+                                    if (currentTime > studentData[studentId].lastUpdate) {
+                                        studentData[studentId].emotionDistribution = doc.emotionDistribution || [0, 0, 0, 0, 0, 0, 0];
+                                        studentData[studentId].lastUpdate = currentTime;
+                                    }
+                                }
+                            });
+
+                            updateUI();
+                        },
+                        onError(err) {
+                            console.error('CloudBase 监听错误:', err);
+                            // 降级到轮询
+                            startPolling();
+                        }
+                    });
+            } catch (error) {
+                console.error('启动 CloudBase 监听失败:', error);
+                startPolling();
+            }
+        }
+
+        // 轮询降级方案
+        function startPolling() {
+            setInterval(async () => {
+                try {
+                    if (!db) return;
+                    const result = await db.collection('student_focus')
+                        .orderBy('timestamp', 'desc')
+                        .limit(100)
+                        .get();
+
+                    const docs = result.data || [];
+                    studentData = {};
+                    docs.forEach(doc => {
+                        const studentId = doc.studentId || '未命名学生';
+                        if (!studentData[studentId]) {
+                            studentData[studentId] = {
+                                name: studentId,
+                                emotionDistribution: doc.emotionDistribution || [0, 0, 0, 0, 0, 0, 0],
+                                lastUpdate: doc.timestamp ? new Date(doc.timestamp) : new Date(),
+                                online: true
+                            };
+                        }
+                    });
+
+                    updateUI();
+                    updateDuration();
+                } catch (error) {
+                    console.error('轮询获取数据失败:', error);
+                }
+            }, 3000);
+        }
+
+        function loadSampleData() {
+            // 示例学生数据（用于演示）
+            studentData = {
+                "张三": {
+                    name: "张三",
+                    emotionDistribution: [5, 8, 3, 60, 8, 12, 4],
+                    lastUpdate: new Date(),
+                    online: true
+                },
+                "李四": {
+                    name: "李四",
+                    emotionDistribution: [8, 5, 5, 55, 10, 12, 5],
+                    lastUpdate: new Date(),
+                    online: true
+                },
+                "王五": {
+                    name: "王五",
+                    emotionDistribution: [4, 10, 2, 70, 5, 6, 3],
+                    lastUpdate: new Date(),
+                    online: true
+                },
+                "赵六": {
+                    name: "赵六",
+                    emotionDistribution: [12, 8, 8, 45, 15, 10, 2],
+                    lastUpdate: new Date(),
+                    online: true
+                }
+            };
+        }
+
+        function initCharts() {
+            const timelineCtx = document.getElementById('timeline-chart').getContext('2d');
+            timelineChart = new Chart(timelineCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: '开心', borderColor: '#52c41a', data: [] },
+                        { label: '中性', borderColor: '#faad14', data: [] },
+                        { label: '难过', borderColor: '#ff7a45', data: [] }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true } }
+                }
+            });
+
+            const pieCtx = document.getElementById('pie-chart').getContext('2d');
+            pieChart = new Chart(pieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: emotions,
+                    datasets: [{
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        backgroundColor: ['#ff4d4f', '#ff7a45', '#ffc069', '#52c41a', '#faad14', '#1677ff', '#d9d9d9']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        function updateUI() {
+            // 更新学生列表
+            const studentList = document.getElementById('student-list');
+            studentList.innerHTML = '';
+            for (const [key, student] of Object.entries(studentData)) {
+                const item = document.createElement('li');
+                item.className = 'student-item';
+                item.innerHTML = `<span class="online-badge"></span>${student.name}`;
+                item.onclick = () => selectStudent(student.name);
+                studentList.appendChild(item);
+            }
+
+            // 更新在线学生数
+            document.getElementById('online-count').textContent = Object.keys(studentData).length;
+
+            // 更新全班统计
+            updateClassStats();
+
+            // 更新学生卡片
+            updateStudentCards();
+
+            // 更新图表
+            updateCharts();
+        }
+
+        function updateClassStats() {
+            const stats = [0, 0, 0, 0, 0, 0, 0];
+            let count = 0;
+
+            for (const student of Object.values(studentData)) {
+                for (let i = 0; i < 7; i++) {
+                    stats[i] += student.emotionDistribution[i];
+                }
+                count++;
+            }
+
+            if (count > 0) {
+                for (let i = 0; i < 7; i++) {
+                    stats[i] = Math.round(stats[i] / count);
+                }
+            }
+
+            const statsHtml = stats.map((val, i) => `
+                <div class="stat-card">
+                    <div class="label">${emotionEmojis[i]} ${emotions[i]}</div>
+                    <div class="value">${val}%</div>
+                </div>
+            `).join('');
+            document.getElementById('class-stats').innerHTML = statsHtml;
+        }
+
+        function updateStudentCards() {
+            let html = '';
+            for (const student of Object.values(studentData)) {
+                const mainEmotionIdx = student.emotionDistribution.indexOf(Math.max(...student.emotionDistribution));
+                const mainEmoji = emotionEmojis[mainEmotionIdx];
+
+                html += `
+                    <div class="student-card">
+                        <div class="name">${student.name}</div>
+                        <div class="emotion">${mainEmoji}</div>
+                        <div class="emotion-bars">
+                            ${student.emotionDistribution.map((val, i) => `
+                                <div class="emotion-bar">
+                                    <div class="bar-bg">
+                                        <div class="bar-fill" style="width: ${val}%"></div>
+                                    </div>
+                                    <div class="bar-label">${emotions[i][0]}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="timestamp">更新于 ${formatTime(student.lastUpdate)}</div>
+                    </div>
+                `;
+            }
+
+            const container = document.getElementById('students-container');
+            if (Object.keys(studentData).length === 0) {
+                container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #999; padding: 40px;">暂无学生在线</div>';
+            } else {
+                container.innerHTML = html;
+            }
+        }
+
+        function updateCharts() {
+            // 更新饼图
+            const stats = [0, 0, 0, 0, 0, 0, 0];
+            let count = 0;
+            for (const student of Object.values(studentData)) {
+                for (let i = 0; i < 7; i++) {
+                    stats[i] += student.emotionDistribution[i];
+                }
+                count++;
+            }
+            if (count > 0) {
+                for (let i = 0; i < 7; i++) {
+                    stats[i] = Math.round(stats[i] / count);
+                }
+            }
+
+            if (pieChart) {
+                pieChart.data.datasets[0].data = stats;
+                pieChart.update();
+            }
+        }
+
+        function selectStudent(name) {
+            console.log('选中学生:', name);
+        }
+
+        function startLesson() {
+            lessonStartTime = new Date();
+            lessonActive = true;
+            alert('✅ 课程已开始记录');
+        }
+
+        function pauseLesson() {
+            lessonActive = !lessonActive;
+            alert(lessonActive ? '▶ 课程恢复' : '⏸ 课程已暂停');
+        }
+
+        function markStage(stage) {
+            stages.push({
+                name: stage,
+                time: new Date(),
+                duration: lessonStartTime ? new Date() - lessonStartTime : 0
+            });
+            alert(`📌 已标记阶段: ${stage}`);
+        }
+
+        function endLesson() {
+            lessonActive = false;
+            alert('⏹ 课程已结束，可以导出报告');
+        }
+
+        function createNewClassroom() {
+            const name = document.getElementById('classroom-name').value;
+            if (name) {
+                studentData = {};
+                stages = [];
+                updateUI();
+                alert('✅ 新课堂已创建: ' + name);
+            }
+        }
+
+        function exportReport() {
+            let csv = '学生名字,生气(%),厌恶(%),恐惧(%),开心(%),难过(%),惊讶(%),中性(%),最后更新\n';
+            for (const student of Object.values(studentData)) {
+                csv += `${student.name},${student.emotionDistribution.join(',')},${student.lastUpdate.toLocaleString()}\n`;
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `课堂报告_${new Date().toLocaleString()}.csv`;
+            a.click();
+            alert('✅ 报告已导出');
+        }
+
+        // startDataRefresh 已由 CloudBase 实时监听替代，仅保留定时更新 UI 的逻辑
+        function startDataRefresh() {
+            setInterval(() => {
+                updateDuration();
+            }, 1000);
+        }
+
+        function updateDuration() {
+            if (lessonActive && lessonStartTime) {
+                const diff = new Date() - lessonStartTime;
+                const mins = Math.floor(diff / 60000);
+                const secs = Math.floor((diff % 60000) / 1000);
+                document.getElementById('duration').textContent =
+                    `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+        }
+
+        function formatTime(date) {
+            const h = String(date.getHours()).padStart(2, '0');
+            const m = String(date.getMinutes()).padStart(2, '0');
+            const s = String(date.getSeconds()).padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        }
+
+        // 初始化UI
+        updateUI();
+    </script>
+
+</body>
+</html>

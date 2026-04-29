@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生专注度监测端</title>
+    <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
+    <script src="https://unpkg.com/onnxruntime-web/dist/ort.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; color: #222; }
+        h2 { margin-bottom: 20px; }
+        .entry-card { width: 100%; max-width: 380px; background: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 24px; text-align: center; }
+        .entry-card h3 { margin: 0 0 12px; }
+        .entry-card p { margin: 0 0 16px; color: #666; font-size: 14px; }
+        .entry-card input { width: calc(100% - 24px); padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; }
+        .entry-card button { margin-top: 12px; width: 100%; padding: 10px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; background: #1677ff; color: #fff; }
+        .entry-error { color: #ff4d4f; min-height: 20px; margin-top: 8px; font-size: 13px; }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; width: 100%; max-width: 1200px; }
+        .video-wrapper { position: relative; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: fit-content; }
+        video { width: 100%; max-width: 400px; display: block; }
+        #face-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; display: block; }
+        .controls { margin-top: 15px; text-align: center; }
+        select, .controls button { padding: 10px 15px; font-size: 16px; margin: 5px; border-radius: 5px; border: none; cursor: pointer; }
+        button.start { background: #52c41a; color: white; }
+        button.stop { background: #ff4d4f; color: white; }
+        #face-warning { background: #fff7e6; border: 2px solid #ff7a45; color: #ff7a45; padding: 12px; border-radius: 6px; margin-top: 10px; font-weight: bold; text-align: center; }
+        .emotion-panel { margin-top: 20px; background: #f5f5f5; border-radius: 8px; padding: 15px; }
+        .emotion-panel h3 { margin: 0 0 12px; color: #333; font-size: 14px; }
+        .emotion-bar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .emotion-item { background: white; border-radius: 6px; padding: 10px; border: 1px solid #ddd; }
+        .emotion-label { font-size: 13px; font-weight: 600; color: #333; margin-bottom: 4px; }
+        .emotion-bar-bg { background: #e8e8e8; border-radius: 4px; height: 18px; overflow: hidden; }
+        .emotion-bar { height: 100%; background: linear-gradient(90deg, #52c41a, #faad14); width: 0%; transition: width 0.2s ease; }
+        .emotion-pct { font-size: 12px; color: #666; margin-top: 3px; }
+        .log-container { background: #1f1f1f; color: #fff; width: 100%; max-width: 400px; height: 300px; border-radius: 8px; padding: 15px; overflow-y: auto; font-family: monospace; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .log-error { color: #ff4d4f; }
+        .log-success { color: #52c41a; }
+        #status { font-weight: bold; color: #1890ff; margin-bottom: 10px; }
+        #student-name-display { margin-bottom: 6px; color: #555; font-size: 14px; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <h2>学生专注度实时监测系统</h2>
+
+    <div id="entry-page" class="entry-card">
+        <h3>进入课堂</h3>
+        <p>请先输入姓名，再开始摄像头识别。</p>
+        <input id="student-name-input" type="text" placeholder="请输入你的姓名" maxlength="30" />
+        <button id="enter-class-btn">进入课堂</button>
+        <div id="entry-error" class="entry-error"></div>
+    </div>
+
+    <div id="classroom-panel" class="container hidden">
+        <div style="flex: 1; min-width: 420px;">
+            <div class="video-wrapper">
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="face-overlay"></canvas>
+            </div>
+            <div class="controls">
+                <div id="student-name-display">当前学生：未设置</div>
+                <div id="status">检测摄像头中...</div>
+                <select id="camera-select"></select>
+                <button id="start-btn" class="start">开启识别</button>
+                <button id="stop-btn" class="stop">关闭</button>
+            </div>
+            <div id="face-warning" class="hidden">⚠️ 2秒内未检测到人脸</div>
+
+            <div class="emotion-panel">
+                <h3>实时情绪分布（7维）</h3>
+                <div class="emotion-bar-grid">
+                    <div class="emotion-item">
+                        <div class="emotion-label">😠 生气</div>
+                        <div class="emotion-bar-bg"><div class="emotion-bar" id="emotion-bar-0"></div></div>
+                        <div class="emotion-pct" id="emotion-pct-0">0%</div>
+                    </div>
+                    <div class="emotion-item">
+                        <div class="emotion-label">🤢 厌恶</div>
+                        <div class="emotion-bar-bg"><div class="emotion-bar" id="emotion-bar-1"></div></div>
+                        <div class="emotion-pct" id="emotion-pct-1">0%</div>
+                    </div>
+                    <div class="emotion-item">
+                        <div class="emotion-label">😨 恐惧</div>
+                        <div class="emotion-bar-bg"><div class="emotion-bar" id="emotion-bar-2"></div></div>
+                        <div class="emotion-pct" id="emotion-pct-2">0%</div>
+                    </div>
+                    <div class="emotion-item">
+                        <div class="emotion-label">😊 开心</div>
+                        <div class="emotion-bar-bg"><div class="emotion-bar" id="emotion-bar-3"></div></div>
+                        <div class="emotion-pct" id="emotion-pct-3">0%</div>
+                    </div>
+                    <div class="emotion-item">
+                        <div class="emotion-label">😢 难过</div>
+                        <div class="emotion-bar-bg"><div class="emotion-bar" id="emotion-bar-4"></div></div>
+                        <div class="emotion-pct" id="emotion-pct-4">0%</div>
+                    </div>
+                    <div class="emotion-item">
+                        <div class="emotion-label">😲 惊讶</div>
+                        <div class="emotion-bar-bg"><div class="emotion-bar" id="emotion-bar-5"></div></div>
+                        <div class="emotion-pct" id="emotion-pct-5">0%</div>
+                    </div>
+                    <div class="emotion-item">
+                        <div class="emotion-label">😐 中性</div>
+                        <div class="emotion-bar-bg"><div class="emotion-bar" id="emotion-bar-6"></div></div>
+                        <div class="emotion-pct" id="emotion-pct-6">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="flex: 1; min-width: 400px;">
+            <h3>实时分析日志</h3>
+            <div id="log-panel" class="log-container">
+                <div style="color: #888;">> 系统已就绪，等待启动...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 挂载全局上传函数，供 app.js 调用
+        // 新格式：只上传学生ID和七维情感分布
+        window.uploadFocusData = async function(studentId, emotionDistribution) {
+            try {
+                if (!window.cloudbase) throw new Error("SDK未加载");
+                const app = window.cloudbase.init({ env: 'xiudongspace-1go2y2fxe6bb2292' });
+                const auth = app.auth();
+                const db = app.database();
+
+                if (!auth.hasLoginState()) {
+                    await auth.signInAnonymously();
+                }
+
+                const data = {
+                    studentId: studentId,
+                    emotionDistribution: emotionDistribution && Array.isArray(emotionDistribution)
+                        ? emotionDistribution.map(v => parseFloat(v.toFixed(1)))
+                        : [0, 0, 0, 0, 0, 0, 0],
+                    timestamp: db.serverDate()
+                };
+
+                await db.collection("student_focus").add(data);
+            } catch (err) {
+                console.error("上传失败", err);
+            }
+        };
+    </script>
+
+    <script src="app.js"></script>
+</body>
+</html>
